@@ -1,75 +1,75 @@
 const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const mainBranch = process.env.DEFAULT_BRANCH || 'main';
-
 const activeBranch =
     process.env.GITHUB_REF_NAME ||
-    (() => {
-        try {
-            return execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
-        } catch {
-            return mainBranch;
-        }
-    })();
-
-const prereleaseChannel = activeBranch.replace(/[/_]/g, '-');
+    (() => { try { return execSync('git rev-parse --abbrev-ref HEAD').toString().trim(); } catch { return mainBranch; } })();
 
 const branches = [mainBranch];
-
 if (activeBranch !== mainBranch) {
-    branches.push({
-        name: activeBranch,
-        prerelease: prereleaseChannel
-    });
+    branches.push({ name: activeBranch, prerelease: activeBranch.replace(/[/_]/g, '-') });
 }
 
+const BUILTIN_PLUGINS = [
+    "@semantic-release/commit-analyzer", "@semantic-release/release-notes-generator",
+    "@semantic-release/exec", "@semantic-release/git", "@semantic-release/github",
+];
+
+function loadProjectPlugins() {
+    const configPath = path.resolve(process.cwd(), '.releaserc-config.json');
+    if (!fs.existsSync(configPath)) return [];
+    try {
+        const config = require(configPath);
+        return Array.isArray(config) ? config : [];
+    } catch (e) {
+        console.error(`Could not load ${configPath}:`, e.message);
+        return [];
+    }
+}
+
+const projectPlugins = loadProjectPlugins();
+
+function getOverrides(name) {
+    const found = projectPlugins.find(p => (Array.isArray(p) ? p[0] : p) === name);
+    return found ? (Array.isArray(found) ? found[1] : {}) : null;
+}
+
+const extraPlugins = projectPlugins.filter(p => !BUILTIN_PLUGINS.includes(Array.isArray(p) ? p[0] : p));
+
+const execOverrides = getOverrides("@semantic-release/exec") || {};
+const gitOverrides = getOverrides("@semantic-release/git") || {};
+const githubOverrides = getOverrides("@semantic-release/github") || {};
+
 const plugins = [
-    [
-        "@semantic-release/commit-analyzer",
-        {
-            "preset": "conventionalcommits",
-            "releaseRules": [
-                { "breaking": true, "release": "major" },
-                { "type": "feat", "release": "minor" },
-                { "type": "fix", "release": "patch" },
-                { "type": "perf", "release": "patch" },
-                { "type": "revert", "release": "patch" },
-                { "type": "chore", "release": "patch" },
-                { "type": "refactor", "release": "patch" }
-            ]
-        }
-    ],
-    [
-        "@semantic-release/release-notes-generator",
-        { "preset": "conventionalcommits" }
-    ]
+    ...extraPlugins,
+    ["@semantic-release/commit-analyzer", {
+        preset: "conventionalcommits",
+        releaseRules: [
+            { breaking: true, release: "major" },
+            { type: "feat", release: "minor" },
+            { type: "fix", release: "patch" },
+            { type: "perf", release: "patch" },
+            { type: "revert", release: "patch" },
+            { type: "chore", release: "patch" },
+            { type: "refactor", release: "patch" },
+        ]
+    }],
+    ["@semantic-release/release-notes-generator", { preset: "conventionalcommits" }],
+    ["@semantic-release/exec", {
+        successCmd: "echo 'new_release_published=true' >> $GITHUB_ENV && echo 'new_release_version=${nextRelease.version}' >> $GITHUB_ENV && echo 'release_type=${nextRelease.type}' >> $GITHUB_ENV",
+        ...execOverrides,
+    }],
 ];
 
 if (activeBranch === mainBranch) {
-    plugins.push([
-        "@semantic-release/git",
-        {
-            "assets": [],
-            "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
-        }
-    ]);
+    plugins.push(["@semantic-release/git", {
+        assets: [...(gitOverrides.assets || [])],
+        message: gitOverrides.message || "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
+    }]);
 }
 
-plugins.push([
-    "@semantic-release/github",
-    {
-        "successComment": false
-    }
-]);
+plugins.push(["@semantic-release/github", { successComment: false, ...githubOverrides }]);
 
-plugins.push([
-    "@semantic-release/exec",
-    {
-        "successCmd": "echo 'new_release_published=true' >> $GITHUB_ENV && echo 'new_release_version=${nextRelease.version}' >> $GITHUB_ENV && echo 'release_type=${nextRelease.type}' >> $GITHUB_ENV"
-    }
-]);
-
-module.exports = {
-    branches,
-    plugins
-};
+module.exports = { branches, plugins };
