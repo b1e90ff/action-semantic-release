@@ -85,9 +85,30 @@ jobs:
 | `new_release_version` | Version string without prefix (e.g., `2.1.0`) |
 | `release_type` | `major`, `minor`, or `patch` |
 
-## Bring Your Own Config
+## Configuration
 
-Drop any standard semantic-release config file in your repo root (`.releaserc.js`, `.releaserc.json`, `release.config.cjs`, etc.) and the action will use it. When no config is found, a sensible default is applied automatically.
+### Full Override
+
+Drop any standard semantic-release config file in your repo root (`.releaserc.js`, `.releaserc.json`, `release.config.cjs`, etc.) and the action will use it instead of the built-in default.
+
+### Plugin Overrides (recommended)
+
+To extend the built-in config without replacing it, create a `.releaserc-config.json` in your repo root. Plugins defined here are merged with the defaults — you only specify what you need to change.
+
+```json
+[
+  ["@semantic-release/exec", {
+    "prepareCmd": "sed -i 's/^version:.*/version: ${nextRelease.version}/' Chart.yaml"
+  }],
+  ["@semantic-release/git", {
+    "assets": ["Chart.yaml"]
+  }]
+]
+```
+
+Built-in plugins (`commit-analyzer`, `release-notes-generator`, `exec`, `git`, `github`) are merged — your config overrides their options. Any other plugin in the array is added as an extra.
+
+In monorepo mode, the resolved config is automatically propagated to each module.
 
 ## Conventional Commits Quick Reference
 
