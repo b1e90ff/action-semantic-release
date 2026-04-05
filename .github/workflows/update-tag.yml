@@ -1,0 +1,55 @@
+name: Sync Version Tags
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  sync-major-tag:
+    name: Point Major Tag to Latest
+    runs-on: ubuntu-latest
+    if: ${{ github.event.release.target_commitish == github.event.repository.default_branch && !github.event.release.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move major version tag
+        uses: Actions-R-Us/actions-tagger@v2
+        with:
+          publish_latest_tag: false
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Patch README version references
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          NEW_MAJOR="v$(echo "${TAG#v}" | cut -d. -f1)"
+
+          PREV_TAG=$(git tag -l 'v*.*.*' --sort=-v:refname | grep -v "${TAG}" | head -1)
+          if [ -n "${PREV_TAG}" ]; then
+            PREV_MAJOR="v$(echo "${PREV_TAG#v}" | cut -d. -f1)"
+          else
+            PREV_MAJOR=""
+          fi
+
+          if [ "${NEW_MAJOR}" != "${PREV_MAJOR}" ] && [ -n "${PREV_MAJOR}" ]; then
+            echo "Major version bump detected: ${PREV_MAJOR} -> ${NEW_MAJOR}"
+
+            if [ -f README.md ]; then
+              sed -i "s|action-semantic-release@${PREV_MAJOR}|action-semantic-release@${NEW_MAJOR}|g" README.md
+
+              if ! git diff --quiet README.md; then
+                git config user.name "github-actions[bot]"
+                git config user.email "github-actions[bot]@users.noreply.github.com"
+                git add README.md
+                git commit -m "docs: bump version references to ${NEW_MAJOR} [skip ci]"
+                git push
+              fi
+            fi
+          fi

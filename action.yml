@@ -1,0 +1,124 @@
+name: "Automated Release"
+description: "Composite action that automates version management and changelog generation using semantic-release with conventional commits."
+author: "b1e90ff"
+branding:
+  icon: "package"
+  color: "purple"
+
+inputs:
+  github-token:
+    description: "Token for GitHub API access"
+    required: true
+  push-token:
+    description: "Token with write permissions for pushing release commits and tags (defaults to github-token)"
+    required: false
+    default: ""
+
+  ref:
+    description: "Branch or tag to checkout"
+    required: false
+    default: ""
+  dry-run:
+    description: "Preview mode - analyzes commits without creating a release"
+    required: false
+    default: "false"
+  extra-plugins:
+    description: "Space or newline-separated list of additional semantic-release plugins to install"
+    required: false
+    default: ""
+  node-version:
+    description: "Node.js runtime version"
+    required: false
+    default: "22"
+  checkout-repository:
+    description: "Set to false if the repository is already checked out"
+    required: false
+    default: "true"
+
+  npm-registry-scope:
+    description: "Scope for npm package registry authentication (e.g., @myorg)"
+    required: false
+    default: ""
+  npm-registry-url:
+    description: "URL of the npm package registry"
+    required: false
+    default: "https://npm.pkg.github.com"
+
+  enable-monorepo:
+    description: "Activate monorepo mode to release each module independently"
+    required: false
+    default: "false"
+
+outputs:
+  release_tag:
+    description: "Git tag created for the release (e.g., v1.2.3)"
+    value: ${{ steps.release_info.outputs.release_tag }}
+  new_release_published:
+    description: "Indicates whether a new version was published"
+    value: ${{ steps.release_info.outputs.new_release_published }}
+  new_release_version:
+    description: "Semantic version number of the new release (e.g., 1.2.3)"
+    value: ${{ steps.release_info.outputs.new_release_version }}
+  release_type:
+    description: "Classification of the release (major, minor, patch)"
+    value: ${{ steps.release_info.outputs.release_type }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      if: inputs.checkout-repository == 'true'
+      uses: actions/checkout@v4
+      with:
+        token: ${{ inputs.push-token || inputs.github-token }}
+        ref: ${{ inputs.ref }}
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Mark workspace as safe
+      shell: bash
+      run: git config --global --add safe.directory "$(pwd)"
+
+    - name: Setup npm authentication
+      if: inputs.npm-registry-scope != ''
+      shell: bash
+      env:
+        NPM_TOKEN: ${{ inputs.github-token }}
+        NPM_SCOPE: ${{ inputs.npm-registry-scope }}
+        NPM_REGISTRY: ${{ inputs.npm-registry-url }}
+      run: "${GITHUB_ACTION_PATH}/scripts/setup-npm.sh"
+
+    - name: Resolve release configuration
+      shell: bash
+      run: "${GITHUB_ACTION_PATH}/scripts/resolve-config.sh"
+
+    - name: Propagate configuration to modules
+      if: inputs.enable-monorepo == 'true'
+      shell: bash
+      run: node "${GITHUB_ACTION_PATH}/scripts/propagate-config.js"
+
+    - name: Execute semantic-release
+      id: semantic_release
+      shell: bash
+      env:
+        INPUT_ENABLE_MONOREPO: ${{ inputs.enable-monorepo }}
+        INPUT_EXTRA_PLUGINS: ${{ inputs.extra-plugins }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        GITHUB_TOKEN: ${{ inputs.push-token || inputs.github-token }}
+        GH_TOKEN: ${{ inputs.push-token || inputs.github-token }}
+      run: "${GITHUB_ACTION_PATH}/scripts/release.sh"
+
+    - name: Collect release outputs
+      id: release_info
+      if: github.ref_type != 'tag'
+      shell: bash
+      run: |
+        echo "new_release_published=${{ env.new_release_published }}" >> "$GITHUB_OUTPUT"
+        echo "new_release_version=${{ env.new_release_version }}" >> "$GITHUB_OUTPUT"
+        echo "release_type=${{ env.release_type }}" >> "$GITHUB_OUTPUT"
+        echo "release_tag=v${{ env.new_release_version }}" >> "$GITHUB_OUTPUT"
