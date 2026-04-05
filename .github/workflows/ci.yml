@@ -48,3 +48,14 @@ jobs:
       - run: |
           npm install --no-save eslint @eslint/js globals
           npx eslint .
+
+  ci:
+    name: CI
+    needs: [lint-action, lint-scripts, lint-workflows, lint-js]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for result in "${{ needs.lint-action.result }}" "${{ needs.lint-scripts.result }}" "${{ needs.lint-workflows.result }}" "${{ needs.lint-js.result }}"; do
+            [ "$result" = "success" ] || exit 1
+          done
