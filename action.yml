@@ -68,7 +68,7 @@ runs:
   steps:
     - name: Checkout code
       if: inputs.checkout-repository == 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         token: ${{ inputs.push-token || inputs.github-token }}
         ref: ${{ inputs.ref }}
