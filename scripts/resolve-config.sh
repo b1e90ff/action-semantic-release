@@ -19,5 +19,5 @@ for cfg in "${KNOWN_CONFIGS[@]}"; do
   fi
 done
 
-cp "${GITHUB_ACTION_PATH}/.releaserc.js" ./
+cp "${GITHUB_ACTION_PATH}/.releaserc.cjs" ./
 echo "::notice::Default release configuration applied"

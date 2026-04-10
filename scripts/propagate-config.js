@@ -14,7 +14,7 @@ const KNOWN_CONFIGS = [
 
 // Find workspace root config, fall back to bundled
 const rootConfig = KNOWN_CONFIGS.map(f => path.resolve(process.cwd(), f)).find(f => fs.existsSync(f));
-const bundledConfig = path.join(__dirname, '..', '.releaserc.js');
+const bundledConfig = path.join(__dirname, '..', '.releaserc.cjs');
 const sourceConfig = rootConfig || bundledConfig;
 const configName = path.basename(sourceConfig);
 
