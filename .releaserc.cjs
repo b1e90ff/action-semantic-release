@@ -17,9 +17,20 @@ const BUILTIN_PLUGINS = [
     "@semantic-release/exec", "@semantic-release/git", "@semantic-release/github",
 ];
 
+function findProjectConfig() {
+    let dir = process.cwd();
+    while (true) {
+        const candidate = path.join(dir, '.releaserc-config.json');
+        if (fs.existsSync(candidate)) return candidate;
+        const parent = path.dirname(dir);
+        if (parent === dir) return null; // reached filesystem root
+        dir = parent;
+    }
+}
+
 function loadProjectPlugins() {
-    const configPath = path.resolve(process.cwd(), '.releaserc-config.json');
-    if (!fs.existsSync(configPath)) return [];
+    const configPath = findProjectConfig();
+    if (!configPath) return [];
     try {
         const config = require(configPath);
         return Array.isArray(config) ? config : [];
