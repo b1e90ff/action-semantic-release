@@ -7,7 +7,12 @@ set -euo pipefail
 
 host="${NPM_REGISTRY#https://}"
 
-cat > .npmrc <<EOF
+# Write to $HOME so per-module subdirectory runs (monorepo mode)
+# also see the registry mapping and auth token. npm reads .npmrc
+# from CWD/$HOME/global and does not walk up parent directories,
+# so a project-level .npmrc in the workspace root would be invisible
+# to "cd module && npx ..." invocations.
+cat > "${HOME}/.npmrc" <<EOF
 //${host}/:_authToken=${NPM_TOKEN}
 ${NPM_SCOPE}:registry=${NPM_REGISTRY}
 EOF
