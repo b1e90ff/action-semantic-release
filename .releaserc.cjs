@@ -18,14 +18,14 @@ const BUILTIN_PLUGINS = [
 ];
 
 function findProjectConfig() {
-    let dir = process.cwd();
-    while (true) {
-        const candidate = path.join(dir, '.releaserc-config.json');
-        if (fs.existsSync(candidate)) return candidate;
-        const parent = path.dirname(dir);
-        if (parent === dir) return null; // reached filesystem root
-        dir = parent;
+    // Look in cwd first (single-repo runs and modules that ship their own override),
+    // then fall back to the original checkout root for monorepo per-module runs
+    // where cwd is the module subdirectory.
+    const candidates = [path.join(process.cwd(), '.releaserc-config.json')];
+    if (process.env.GITHUB_WORKSPACE) {
+        candidates.push(path.join(process.env.GITHUB_WORKSPACE, '.releaserc-config.json'));
     }
+    return candidates.find(p => fs.existsSync(p)) || null;
 }
 
 function loadProjectPlugins() {
