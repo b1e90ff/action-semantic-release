@@ -17,9 +17,20 @@ const BUILTIN_PLUGINS = [
     "@semantic-release/exec", "@semantic-release/git", "@semantic-release/github",
 ];
 
+function findProjectConfig() {
+    // Look in cwd first (single-repo runs and modules that ship their own override),
+    // then fall back to the original checkout root for monorepo per-module runs
+    // where cwd is the module subdirectory.
+    const candidates = [path.join(process.cwd(), '.releaserc-config.json')];
+    if (process.env.GITHUB_WORKSPACE) {
+        candidates.push(path.join(process.env.GITHUB_WORKSPACE, '.releaserc-config.json'));
+    }
+    return candidates.find(p => fs.existsSync(p)) || null;
+}
+
 function loadProjectPlugins() {
-    const configPath = path.resolve(process.cwd(), '.releaserc-config.json');
-    if (!fs.existsSync(configPath)) return [];
+    const configPath = findProjectConfig();
+    if (!configPath) return [];
     try {
         const config = require(configPath);
         return Array.isArray(config) ? config : [];
