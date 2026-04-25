@@ -67,7 +67,19 @@ const plugins = [
             { type: "refactor", release: "patch" },
         ]
     }],
-    ["@semantic-release/release-notes-generator", { preset: "conventionalcommits" }],
+    ["@semantic-release/release-notes-generator", {
+        preset: "conventionalcommits",
+        presetConfig: {
+            types: [
+                { type: "feat", section: "✨ Features" },
+                { type: "fix", section: "🐛 Bug Fixes" },
+                { type: "perf", section: "⚡ Performance Improvements" },
+                { type: "revert", section: "⏪ Reverts" },
+                { type: "refactor", section: "♻️ Code Refactoring" },
+                { type: "chore", section: "🔧 Maintenance" },
+            ],
+        },
+    }],
     ["@semantic-release/exec", {
         successCmd: "echo 'new_release_published=true' >> $GITHUB_ENV && echo 'new_release_version=${nextRelease.version}' >> $GITHUB_ENV && echo 'release_type=${nextRelease.type}' >> $GITHUB_ENV",
         ...execOverrides,
