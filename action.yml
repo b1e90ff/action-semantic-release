@@ -29,7 +29,7 @@ inputs:
   node-version:
     description: "Node.js runtime version"
     required: false
-    default: "22"
+    default: "24"
   checkout-repository:
     description: "Set to false if the repository is already checked out"
     required: false

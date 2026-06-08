@@ -70,7 +70,7 @@ jobs:
 | `ref` | no | `''` | Branch or tag to check out |
 | `dry-run` | no | `false` | Analyze commits without publishing |
 | `extra-plugins` | no | `''` | Additional plugins (whitespace-separated) |
-| `node-version` | no | `22` | Node.js version |
+| `node-version` | no | `24` | Node.js version |
 | `npm-registry-scope` | no | `''` | npm scope for private registry auth |
 | `npm-registry-url` | no | `https://npm.pkg.github.com` | npm registry URL |
 | `checkout-repository` | no | `true` | Skip checkout if already done |
