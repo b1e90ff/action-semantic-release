@@ -57,12 +57,30 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - run: |
+      - name: Notes render with the configured sections
+        run: |
           set -euo pipefail
           # The spec release.sh installs, so a bad bump fails here first.
           spec=$(grep -oE 'conventional-changelog-conventionalcommits@[^"]+' scripts/release.sh)
-          npm install --no-save @semantic-release/release-notes-generator "${spec}"
+          npm install --no-save --loglevel error @semantic-release/release-notes-generator "${spec}"
           node --test "test/*.test.mjs"
+
+      - name: Preset guard accepts the pinned preset and rejects an old one
+        run: |
+          set -euo pipefail
+          spec=$(grep -oE 'conventional-changelog-conventionalcommits@[^"]+' scripts/release.sh)
+          pinned=$(mktemp -d)
+          npm install --prefix "${pinned}" --no-save --loglevel error \
+            @semantic-release/release-notes-generator "${spec}"
+          node scripts/verify-preset.mjs "${pinned}"
+
+          outdated=$(mktemp -d)
+          npm install --prefix "${outdated}" --no-save --loglevel error \
+            @semantic-release/release-notes-generator conventional-changelog-conventionalcommits@4.6.3
+          if node scripts/verify-preset.mjs "${outdated}"; then
+            echo "::error::the guard accepted a preset that drops every section"
+            exit 1
+          fi
 
   ci:
     name: CI
