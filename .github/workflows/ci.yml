@@ -49,13 +49,28 @@ jobs:
           npm install --no-save eslint @eslint/js globals
           npx eslint .
 
+  test-release-notes:
+    name: Release Notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: |
+          set -euo pipefail
+          # The spec release.sh installs, so a bad bump fails here first.
+          spec=$(grep -oE 'conventional-changelog-conventionalcommits@[^"]+' scripts/release.sh)
+          npm install --no-save @semantic-release/release-notes-generator "${spec}"
+          node --test "test/*.test.mjs"
+
   ci:
     name: CI
-    needs: [lint-action, lint-scripts, lint-workflows, lint-js]
+    needs: [lint-action, lint-scripts, lint-workflows, lint-js, test-release-notes]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for result in "${{ needs.lint-action.result }}" "${{ needs.lint-scripts.result }}" "${{ needs.lint-workflows.result }}" "${{ needs.lint-js.result }}"; do
+          for result in "${{ needs.lint-action.result }}" "${{ needs.lint-scripts.result }}" "${{ needs.lint-workflows.result }}" "${{ needs.lint-js.result }}" "${{ needs.test-release-notes.result }}"; do
             [ "$result" = "success" ] || exit 1
           done
