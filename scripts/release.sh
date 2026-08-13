@@ -9,7 +9,9 @@ PACKAGES=(
   "@semantic-release/github"
   "@semantic-release/exec"
   "semantic-release-export-data"
-  "conventional-changelog-conventionalcommits"
+  # 10.x targets conventional-changelog-writer 9, release-notes-generator 14 pins
+  # writer 8, and the mismatch silently drops every commit section.
+  "conventional-changelog-conventionalcommits@^9"
 )
 
 [ "${INPUT_ENABLE_MONOREPO}" = "true" ] && PACKAGES+=("semantic-release-monorepo")
