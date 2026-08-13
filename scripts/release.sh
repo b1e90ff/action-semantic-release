@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# GITHUB_ACTION_PATH is unset when the script is called directly instead of as the action.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 PACKAGES=(
   "semantic-release"
   "@semantic-release/commit-analyzer"
@@ -31,7 +34,7 @@ TOOLS_DIR="${RUNNER_TEMP:-/tmp}/semantic-release-tools"
 mkdir -p "${TOOLS_DIR}"
 npm install --prefix "${TOOLS_DIR}" --no-save --no-audit --no-fund --loglevel error "${PACKAGES[@]}"
 
-node "${GITHUB_ACTION_PATH}/scripts/verify-preset.mjs" "${TOOLS_DIR}"
+node "${SCRIPT_DIR}/verify-preset.mjs" "${TOOLS_DIR}"
 
 SEMANTIC_RELEASE="${TOOLS_DIR}/node_modules/.bin/semantic-release"
 
