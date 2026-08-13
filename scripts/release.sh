@@ -25,10 +25,15 @@ if [ -n "${INPUT_EXTRA_PLUGINS}" ]; then
   done <<< "${INPUT_EXTRA_PLUGINS}"
 fi
 
-NPX_ARGS=()
-for pkg in "${PACKAGES[@]}"; do
-  NPX_ARGS+=("-p" "${pkg}")
-done
+# Own install directory instead of npx: the plugins then resolve their presets next
+# to themselves and never reach for whatever the released project happens to have.
+TOOLS_DIR="${RUNNER_TEMP:-/tmp}/semantic-release-tools"
+mkdir -p "${TOOLS_DIR}"
+npm install --prefix "${TOOLS_DIR}" --no-save --no-audit --no-fund --loglevel error "${PACKAGES[@]}"
+
+node "${GITHUB_ACTION_PATH}/scripts/verify-preset.mjs" "${TOOLS_DIR}"
+
+SEMANTIC_RELEASE="${TOOLS_DIR}/node_modules/.bin/semantic-release"
 
 SR_ARGS=()
 if [ "${INPUT_DRY_RUN}" = "true" ]; then
@@ -53,7 +58,7 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
   for dir in ${MODULE_DIRS}; do
     if [ -d "${dir}" ]; then
       echo "::group::Module: ${dir}"
-      (cd "${dir}" && npx "${NPX_ARGS[@]}" semantic-release -e semantic-release-monorepo "${SR_ARGS[@]}") || HAS_FAILURE=1
+      (cd "${dir}" && "${SEMANTIC_RELEASE}" -e semantic-release-monorepo "${SR_ARGS[@]}") || HAS_FAILURE=1
       echo "::endgroup::"
     fi
   done
@@ -65,6 +70,6 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
 
   echo "new_release_published=true" >> "$GITHUB_OUTPUT"
 else
-  npx "${NPX_ARGS[@]}" semantic-release "${SR_ARGS[@]}"
+  "${SEMANTIC_RELEASE}" "${SR_ARGS[@]}"
   echo "new_release_published=${new_release_published:-false}" >> "$GITHUB_OUTPUT"
 fi
