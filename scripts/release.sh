@@ -38,6 +38,22 @@ node "${SCRIPT_DIR}/verify-preset.mjs" "${TOOLS_DIR}"
 
 SEMANTIC_RELEASE="${TOOLS_DIR}/node_modules/.bin/semantic-release"
 
+# npx populated npm_package_* from the package.json in CWD; calling the binary
+# directly does not, and release configs interpolate those variables.
+export_npm_package_env() {
+  [ -f package.json ] || return 0
+
+  local name version
+  {
+    IFS= read -r name
+    IFS= read -r version
+  } < <(node -e 'const p = require("./package.json"); console.log(p.name ?? ""); console.log(p.version ?? "")')
+
+  [ -n "${name}" ] || echo "::warning::package.json in $(pwd) has no name — configs reading npm_package_name see an empty value"
+  export npm_package_name="${name}"
+  export npm_package_version="${version}"
+}
+
 SR_ARGS=()
 if [ "${INPUT_DRY_RUN}" = "true" ]; then
   SR_ARGS+=("--dry-run")
@@ -61,7 +77,7 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
   for dir in ${MODULE_DIRS}; do
     if [ -d "${dir}" ]; then
       echo "::group::Module: ${dir}"
-      (cd "${dir}" && "${SEMANTIC_RELEASE}" -e semantic-release-monorepo "${SR_ARGS[@]}") || HAS_FAILURE=1
+      (cd "${dir}" && export_npm_package_env && "${SEMANTIC_RELEASE}" -e semantic-release-monorepo "${SR_ARGS[@]}") || HAS_FAILURE=1
       echo "::endgroup::"
     fi
   done
@@ -73,6 +89,7 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
 
   echo "new_release_published=true" >> "$GITHUB_OUTPUT"
 else
+  export_npm_package_env
   "${SEMANTIC_RELEASE}" "${SR_ARGS[@]}"
   echo "new_release_published=${new_release_published:-false}" >> "$GITHUB_OUTPUT"
 fi
