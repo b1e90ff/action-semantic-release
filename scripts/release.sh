@@ -73,9 +73,10 @@ provide_package_json() {
   [ -f Chart.yaml ] || { echo "::error::${PWD} has neither package.json nor Chart.yaml"; return 2; }
 
   local name
-  name=$(sed -n 's/^name:[[:space:]]*//p' Chart.yaml | head -1 | tr -d "\"'" | xargs)
-  if [ -z "${name}" ]; then
-    echo "::error::Chart.yaml in ${PWD} has no name"
+  name=$(sed -n 's/^name:[[:space:]]*//p' Chart.yaml | head -1 | tr -d '\r' | tr -d "\"'" | xargs)
+  # A stray control character from a CRLF Chart.yaml would produce unparsable JSON below.
+  if [[ ! "${name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "::error::Chart.yaml in ${PWD} has no usable name"
     return 2
   fi
 
