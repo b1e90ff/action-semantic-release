@@ -36,7 +36,11 @@ Release each module independently:
     enable-monorepo: true
 ```
 
-Modules are auto-discovered by scanning for directories with a `package.json`. Each module gets its own independent version and changelog.
+Modules are auto-discovered by scanning for directories with a `package.json` or a `Chart.yaml`. Each module gets its own independent version and changelog.
+
+A Helm chart needs no `package.json`: one is generated from the chart name for the duration of the release and removed again, so it reaches neither a commit nor a chart archive. The git tag stays `<name>-v<version>`, with the name taken from `Chart.yaml`.
+
+Set `generate-package-json: false` where the files are committed on purpose — a module missing one then fails instead of quietly getting a generated stub. `module-markers` decides what counts as a module, so other ecosystems can be discovered by whatever file they carry.
 
 ### Consuming Outputs
 
@@ -75,6 +79,8 @@ jobs:
 | `npm-registry-url` | no | `https://npm.pkg.github.com` | npm registry URL |
 | `checkout-repository` | no | `true` | Skip checkout if already done |
 | `enable-monorepo` | no | `false` | Independent per-module releases |
+| `module-markers` | no | `package.json,Chart.yaml` | File names that mark a directory as a module; globs allowed |
+| `generate-package-json` | no | `true` | Write a `package.json` from `Chart.yaml` for the release; off requires a committed one |
 
 ## Outputs
 

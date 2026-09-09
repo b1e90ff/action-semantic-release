@@ -60,14 +60,66 @@ if [ "${INPUT_DRY_RUN}" = "true" ]; then
   echo "::warning::Dry-run mode active — no release will be published"
 fi
 
+# semantic-release-monorepo reads package.json for the tag prefix; removed after the run so
+# helm package does not ship it inside the chart archive.
+provide_package_json() {
+  [ -f package.json ] && return 1
+
+  if [ "${INPUT_GENERATE_PACKAGE_JSON}" != "true" ]; then
+    echo "::error::${PWD} has no package.json and generate-package-json is off"
+    return 2
+  fi
+
+  [ -f Chart.yaml ] || { echo "::error::${PWD} has neither package.json nor Chart.yaml"; return 2; }
+
+  local name
+  name=$(sed -n 's/^name:[[:space:]]*//p' Chart.yaml | head -1 | tr -d "\"'" | xargs)
+  if [ -z "${name}" ]; then
+    echo "::error::Chart.yaml in ${PWD} has no name"
+    return 2
+  fi
+
+  printf '{"name":"%s","version":"0.0.0","private":true}\n' "${name}" > package.json
+  echo "Generated package.json for chart ${name}"
+  return 0
+}
+
+release_module() {
+  local status=0
+  provide_package_json || status=$?
+  case "${status}" in
+    0) trap 'rm -f package.json' EXIT ;;
+    2) return 1 ;;
+  esac
+
+  export_npm_package_env
+  "${SEMANTIC_RELEASE}" -e semantic-release-monorepo "${SR_ARGS[@]}"
+}
+
 if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
-  MODULE_DIRS=$(find . -maxdepth 2 -type f -name "package.json" \
-    ! -path "./package.json" \
+  : "${INPUT_MODULE_MARKERS:?module-markers must not be empty}"
+  : "${INPUT_GENERATE_PACKAGE_JSON:?generate-package-json must be true or false}"
+
+  MARKER_TEST=()
+  IFS=',' read -r -a MARKERS <<< "${INPUT_MODULE_MARKERS}"
+  for entry in "${MARKERS[@]}"; do
+    read -r marker <<< "${entry}"
+    [ -z "${marker}" ] && continue
+    [ ${#MARKER_TEST[@]} -gt 0 ] && MARKER_TEST+=(-o)
+    MARKER_TEST+=(-name "${marker}")
+  done
+
+  if [ ${#MARKER_TEST[@]} -eq 0 ]; then
+    echo "::error::module-markers is empty, so no module can be discovered"
+    exit 1
+  fi
+
+  MODULE_DIRS=$(find . -maxdepth 2 -type f \( "${MARKER_TEST[@]}" \) \
     ! -path "*/node_modules/*" \
-    -exec dirname {} \; | sed 's|^./||' | sort)
+    -exec dirname {} \; | sed -e 's|^\./||' -e '/^\.$/d' | sort -u)
 
   if [ -z "${MODULE_DIRS}" ]; then
-    echo "::error::Monorepo mode is active but no modules with package.json were found"
+    echo "::error::Monorepo mode is active but no directory carries one of: ${INPUT_MODULE_MARKERS}"
     exit 1
   fi
 
@@ -77,7 +129,7 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
   for dir in ${MODULE_DIRS}; do
     if [ -d "${dir}" ]; then
       echo "::group::Module: ${dir}"
-      (cd "${dir}" && export_npm_package_env && "${SEMANTIC_RELEASE}" -e semantic-release-monorepo "${SR_ARGS[@]}") || HAS_FAILURE=1
+      (cd "${dir}" && release_module) || HAS_FAILURE=1
       echo "::endgroup::"
     fi
   done
