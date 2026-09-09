@@ -64,6 +64,12 @@ fi
 # helm package does not ship it inside the chart archive.
 provide_package_json() {
   [ -f package.json ] && return 1
+
+  if [ "${INPUT_GENERATE_PACKAGE_JSON}" != "true" ]; then
+    echo "::error::${PWD} has no package.json and generate-package-json is off"
+    return 2
+  fi
+
   [ -f Chart.yaml ] || { echo "::error::${PWD} has neither package.json nor Chart.yaml"; return 2; }
 
   local name
@@ -91,14 +97,29 @@ release_module() {
 }
 
 if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
-  MODULE_DIRS=$(find . -maxdepth 2 -type f \( -name "package.json" -o -name "Chart.yaml" \) \
-    ! -path "./package.json" \
-    ! -path "./Chart.yaml" \
+  : "${INPUT_MODULE_MARKERS:?module-markers must not be empty}"
+  : "${INPUT_GENERATE_PACKAGE_JSON:?generate-package-json must be true or false}"
+
+  MARKER_TEST=()
+  IFS=',' read -r -a MARKERS <<< "${INPUT_MODULE_MARKERS}"
+  for entry in "${MARKERS[@]}"; do
+    read -r marker <<< "${entry}"
+    [ -z "${marker}" ] && continue
+    [ ${#MARKER_TEST[@]} -gt 0 ] && MARKER_TEST+=(-o)
+    MARKER_TEST+=(-name "${marker}")
+  done
+
+  if [ ${#MARKER_TEST[@]} -eq 0 ]; then
+    echo "::error::module-markers is empty, so no module can be discovered"
+    exit 1
+  fi
+
+  MODULE_DIRS=$(find . -maxdepth 2 -type f \( "${MARKER_TEST[@]}" \) \
     ! -path "*/node_modules/*" \
-    -exec dirname {} \; | sed 's|^./||' | sort -u)
+    -exec dirname {} \; | sed -e 's|^\./||' -e '/^\.$/d' | sort -u)
 
   if [ -z "${MODULE_DIRS}" ]; then
-    echo "::error::Monorepo mode is active but no modules with a package.json or Chart.yaml were found"
+    echo "::error::Monorepo mode is active but no directory carries one of: ${INPUT_MODULE_MARKERS}"
     exit 1
   fi
 

@@ -49,6 +49,16 @@ inputs:
     required: false
     default: "false"
 
+  module-markers:
+    description: "Comma-separated file names that mark a directory as a releasable module"
+    required: false
+    default: "package.json,Chart.yaml"
+
+  generate-package-json:
+    description: "Write a package.json from Chart.yaml for the duration of a module release. Turn off to require a committed one."
+    required: false
+    default: "true"
+
 outputs:
   release_tag:
     description: "Git tag created for the release (e.g., v1.2.3)"
@@ -99,6 +109,8 @@ runs:
     - name: Propagate configuration to modules
       if: inputs.enable-monorepo == 'true'
       shell: bash
+      env:
+        INPUT_MODULE_MARKERS: ${{ inputs.module-markers }}
       run: node "${GITHUB_ACTION_PATH}/scripts/propagate-config.js"
 
     - name: Execute semantic-release
@@ -108,6 +120,8 @@ runs:
         INPUT_ENABLE_MONOREPO: ${{ inputs.enable-monorepo }}
         INPUT_EXTRA_PLUGINS: ${{ inputs.extra-plugins }}
         INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_MODULE_MARKERS: ${{ inputs.module-markers }}
+        INPUT_GENERATE_PACKAGE_JSON: ${{ inputs.generate-package-json }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         GITHUB_TOKEN: ${{ inputs.push-token || inputs.github-token }}
       run: "${GITHUB_ACTION_PATH}/scripts/release.sh"
