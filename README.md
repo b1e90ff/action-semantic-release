@@ -36,7 +36,12 @@ Release each module independently:
     enable-monorepo: true
 ```
 
-Modules are auto-discovered by scanning for directories with a `package.json` or a `Chart.yaml`. Each module gets its own independent version and changelog.
+Modules are the directories matched by `module-pattern` that carry a `package.json` or a `Chart.yaml`. Each one gets its own independent version and changelog. The default `*` covers modules directly below the root; a repository that groups them needs the pattern spelled out:
+
+```yaml
+    enable-monorepo: true
+    module-pattern: "charts/*"
+```
 
 A Helm chart needs no `package.json`: one is generated from the chart name for the duration of the release and removed again, so it reaches neither a commit nor a chart archive. The git tag stays `<name>-v<version>`, with the name taken from `Chart.yaml`.
 
@@ -79,6 +84,7 @@ jobs:
 | `npm-registry-url` | no | `https://npm.pkg.github.com` | npm registry URL |
 | `checkout-repository` | no | `true` | Skip checkout if already done |
 | `enable-monorepo` | no | `false` | Independent per-module releases |
+| `module-pattern` | no | `*` | Glob of directories to search for modules, e.g. `charts/*` |
 | `module-markers` | no | `package.json,Chart.yaml` | File names that mark a directory as a module; globs allowed |
 | `generate-package-json` | no | `true` | Write a `package.json` from `Chart.yaml` for the release; off requires a committed one |
 
@@ -114,7 +120,7 @@ To extend the built-in config without replacing it, create a `.releaserc-config.
 
 Built-in plugins (`commit-analyzer`, `release-notes-generator`, `exec`, `git`, `github`) are merged — your config overrides their options. Any other plugin in the array is added as an extra.
 
-In monorepo mode, the resolved config is automatically propagated to each module.
+In monorepo mode the resolved config is copied into each module before it is released; a module that ships its own keeps it.
 
 ## Conventional Commits Quick Reference
 
