@@ -84,6 +84,15 @@ provide_package_json() {
   return 0
 }
 
+# semantic-release reads its configuration from the working directory, one per module.
+provide_release_config() {
+  local cfg="${RELEASE_CONFIG_FILE:-}"
+  [ -z "${cfg}" ] && return 0
+  [ -f "${cfg}" ] && return 0
+  [ -f "${REPO_ROOT}/${cfg}" ] || { echo "::error::${cfg} is missing at the repository root"; return 1; }
+  cp "${REPO_ROOT}/${cfg}" ./
+}
+
 release_module() {
   local status=0
   provide_package_json || status=$?
@@ -100,38 +109,51 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
   : "${INPUT_MODULE_MARKERS:?module-markers must not be empty}"
   : "${INPUT_GENERATE_PACKAGE_JSON:?generate-package-json must be true or false}"
 
-  MARKER_TEST=()
-  IFS=',' read -r -a MARKERS <<< "${INPUT_MODULE_MARKERS}"
-  for entry in "${MARKERS[@]}"; do
+  : "${INPUT_MODULE_PATTERN:?module-pattern must not be empty}"
+
+  MARKERS=()
+  IFS=',' read -r -a raw_markers <<< "${INPUT_MODULE_MARKERS}"
+  for entry in "${raw_markers[@]}"; do
     read -r marker <<< "${entry}"
-    [ -z "${marker}" ] && continue
-    [ ${#MARKER_TEST[@]} -gt 0 ] && MARKER_TEST+=(-o)
-    MARKER_TEST+=(-name "${marker}")
+    [ -n "${marker}" ] && MARKERS+=("${marker}")
   done
 
-  if [ ${#MARKER_TEST[@]} -eq 0 ]; then
+  if [ ${#MARKERS[@]} -eq 0 ]; then
     echo "::error::module-markers is empty, so no module can be discovered"
     exit 1
   fi
 
-  MODULE_DIRS=$(find . -maxdepth 2 -type f \( "${MARKER_TEST[@]}" \) \
-    ! -path "*/node_modules/*" \
-    -exec dirname {} \; | sed -e 's|^\./||' -e '/^\.$/d' | sort -u)
+  MODULE_DIRS=()
+  declare -A module_seen=()
+  shopt -s nullglob
+  for candidate in ${INPUT_MODULE_PATTERN}; do
+    candidate="${candidate%/}"
+    [ -d "${candidate}" ] || continue
+    case "${candidate}" in */node_modules|*/node_modules/*|node_modules|.*) continue ;; esac
+    [ -n "${module_seen[${candidate}]:-}" ] && continue
+    for marker in "${MARKERS[@]}"; do
+      if [ -f "${candidate}/${marker}" ]; then
+        module_seen["${candidate}"]=1
+        MODULE_DIRS+=("${candidate}")
+        break
+      fi
+    done
+  done
+  shopt -u nullglob
 
-  if [ -z "${MODULE_DIRS}" ]; then
-    echo "::error::Monorepo mode is active but no directory carries one of: ${INPUT_MODULE_MARKERS}"
+  if [ ${#MODULE_DIRS[@]} -eq 0 ]; then
+    echo "::error::No directory under '${INPUT_MODULE_PATTERN}' carries one of: ${INPUT_MODULE_MARKERS}"
     exit 1
   fi
 
-  echo "::notice::Processing modules: ${MODULE_DIRS}"
+  echo "::notice::Processing modules: ${MODULE_DIRS[*]}"
+  REPO_ROOT="${PWD}"
   HAS_FAILURE=0
 
-  for dir in ${MODULE_DIRS}; do
-    if [ -d "${dir}" ]; then
-      echo "::group::Module: ${dir}"
-      (cd "${dir}" && release_module) || HAS_FAILURE=1
-      echo "::endgroup::"
-    fi
+  for dir in "${MODULE_DIRS[@]}"; do
+    echo "::group::Module: ${dir}"
+    (cd "${dir}" && provide_release_config && release_module) || HAS_FAILURE=1
+    echo "::endgroup::"
   done
 
   if [ "${HAS_FAILURE}" -ne 0 ]; then

@@ -49,6 +49,11 @@ inputs:
     required: false
     default: "false"
 
+  module-pattern:
+    description: "Glob of directories to search for modules, relative to the repository root (e.g. 'charts/*')"
+    required: false
+    default: "*"
+
   module-markers:
     description: "Comma-separated file names that mark a directory as a releasable module"
     required: false
@@ -106,13 +111,6 @@ runs:
       shell: bash
       run: "${GITHUB_ACTION_PATH}/scripts/resolve-config.sh"
 
-    - name: Propagate configuration to modules
-      if: inputs.enable-monorepo == 'true'
-      shell: bash
-      env:
-        INPUT_MODULE_MARKERS: ${{ inputs.module-markers }}
-      run: node "${GITHUB_ACTION_PATH}/scripts/propagate-config.js"
-
     - name: Execute semantic-release
       id: semantic_release
       shell: bash
@@ -120,6 +118,7 @@ runs:
         INPUT_ENABLE_MONOREPO: ${{ inputs.enable-monorepo }}
         INPUT_EXTRA_PLUGINS: ${{ inputs.extra-plugins }}
         INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_MODULE_PATTERN: ${{ inputs.module-pattern }}
         INPUT_MODULE_MARKERS: ${{ inputs.module-markers }}
         INPUT_GENERATE_PACKAGE_JSON: ${{ inputs.generate-package-json }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
