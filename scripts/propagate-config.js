@@ -18,9 +18,11 @@ const bundledConfig = path.join(__dirname, '..', '.releaserc.cjs');
 const sourceConfig = rootConfig || bundledConfig;
 const configName = path.basename(sourceConfig);
 
+const MODULE_MARKERS = ['package.json', 'Chart.yaml'];
+
 const modules = fs.readdirSync('.', { withFileTypes: true })
     .filter(entry => entry.isDirectory())
-    .filter(entry => fs.existsSync(path.join(entry.name, 'package.json')))
+    .filter(entry => MODULE_MARKERS.some(m => fs.existsSync(path.join(entry.name, m))))
     .filter(entry => !entry.name.startsWith('.') && entry.name !== 'node_modules')
     .map(entry => entry.name);
 

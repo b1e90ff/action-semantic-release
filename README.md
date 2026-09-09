@@ -36,7 +36,9 @@ Release each module independently:
     enable-monorepo: true
 ```
 
-Modules are auto-discovered by scanning for directories with a `package.json`. Each module gets its own independent version and changelog.
+Modules are auto-discovered by scanning for directories with a `package.json` or a `Chart.yaml`. Each module gets its own independent version and changelog.
+
+A Helm chart needs no `package.json`: one is generated from the chart name for the duration of the release and removed again, so it reaches neither a commit nor a chart archive. The git tag stays `<name>-v<version>`, with the name taken from `Chart.yaml`.
 
 ### Consuming Outputs
 

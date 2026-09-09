@@ -60,14 +60,45 @@ if [ "${INPUT_DRY_RUN}" = "true" ]; then
   echo "::warning::Dry-run mode active — no release will be published"
 fi
 
+# semantic-release-monorepo reads package.json for the tag prefix; removed after the run so
+# helm package does not ship it inside the chart archive.
+provide_package_json() {
+  [ -f package.json ] && return 1
+  [ -f Chart.yaml ] || { echo "::error::${PWD} has neither package.json nor Chart.yaml"; return 2; }
+
+  local name
+  name=$(sed -n 's/^name:[[:space:]]*//p' Chart.yaml | head -1 | tr -d "\"'" | xargs)
+  if [ -z "${name}" ]; then
+    echo "::error::Chart.yaml in ${PWD} has no name"
+    return 2
+  fi
+
+  printf '{"name":"%s","version":"0.0.0","private":true}\n' "${name}" > package.json
+  echo "Generated package.json for chart ${name}"
+  return 0
+}
+
+release_module() {
+  local status=0
+  provide_package_json || status=$?
+  case "${status}" in
+    0) trap 'rm -f package.json' EXIT ;;
+    2) return 1 ;;
+  esac
+
+  export_npm_package_env
+  "${SEMANTIC_RELEASE}" -e semantic-release-monorepo "${SR_ARGS[@]}"
+}
+
 if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
-  MODULE_DIRS=$(find . -maxdepth 2 -type f -name "package.json" \
+  MODULE_DIRS=$(find . -maxdepth 2 -type f \( -name "package.json" -o -name "Chart.yaml" \) \
     ! -path "./package.json" \
+    ! -path "./Chart.yaml" \
     ! -path "*/node_modules/*" \
-    -exec dirname {} \; | sed 's|^./||' | sort)
+    -exec dirname {} \; | sed 's|^./||' | sort -u)
 
   if [ -z "${MODULE_DIRS}" ]; then
-    echo "::error::Monorepo mode is active but no modules with package.json were found"
+    echo "::error::Monorepo mode is active but no modules with a package.json or Chart.yaml were found"
     exit 1
   fi
 
@@ -77,7 +108,7 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
   for dir in ${MODULE_DIRS}; do
     if [ -d "${dir}" ]; then
       echo "::group::Module: ${dir}"
-      (cd "${dir}" && export_npm_package_env && "${SEMANTIC_RELEASE}" -e semantic-release-monorepo "${SR_ARGS[@]}") || HAS_FAILURE=1
+      (cd "${dir}" && release_module) || HAS_FAILURE=1
       echo "::endgroup::"
     fi
   done
