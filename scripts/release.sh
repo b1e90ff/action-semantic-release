@@ -165,6 +165,76 @@ if [ "${INPUT_ENABLE_MONOREPO}" = "true" ]; then
   echo "new_release_published=true" >> "$GITHUB_OUTPUT"
 else
   export_npm_package_env
-  "${SEMANTIC_RELEASE}" "${SR_ARGS[@]}"
+
+  MAX_ATTEMPTS=1
+  if [ "${INPUT_RETRY_ON_REMOTE_AHEAD:-true}" = "true" ]; then
+    MAX_ATTEMPTS=3
+  fi
+
+  ATTEMPT=1
+  TARGET_BRANCH="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
+  if [ -z "${TARGET_BRANCH}" ] || [ "${TARGET_BRANCH}" = "HEAD" ]; then
+    TARGET_BRANCH="${DEFAULT_BRANCH:-main}"
+  fi
+  TARGET_BRANCH="${TARGET_BRANCH#refs/heads/}"
+
+  is_release_published() {
+    [ -n "${GITHUB_ENV:-}" ] && [ -f "${GITHUB_ENV}" ] && grep -q "^new_release_published=true$" "${GITHUB_ENV}"
+  }
+
+  while [ "${ATTEMPT}" -le "${MAX_ATTEMPTS}" ]; do
+    if [ "${ATTEMPT}" -gt 1 ]; then
+      echo "::notice::Retrying semantic-release (attempt ${ATTEMPT} of ${MAX_ATTEMPTS})..."
+    fi
+
+    git fetch origin "${TARGET_BRANCH}" 2>/dev/null || true
+
+    if git rev-parse --verify "origin/${TARGET_BRANCH}" >/dev/null 2>&1; then
+      LOCAL_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+      REMOTE_SHA=$(git rev-parse "origin/${TARGET_BRANCH}" 2>/dev/null || echo "")
+      if [ -n "${LOCAL_SHA}" ] && [ -n "${REMOTE_SHA}" ] && [ "${LOCAL_SHA}" != "${REMOTE_SHA}" ]; then
+        echo "Local HEAD differs from origin/${TARGET_BRANCH}. Synchronizing..."
+        if ! git merge --ff-only "origin/${TARGET_BRANCH}" 2>/dev/null; then
+          if ! git merge --no-edit "origin/${TARGET_BRANCH}" 2>/dev/null; then
+            echo "::error::Merge conflict detected when syncing with origin/${TARGET_BRANCH}." >&2
+            git merge --abort 2>/dev/null || true
+            exit 1
+          fi
+        fi
+      fi
+    fi
+
+    SR_LOG=$(mktemp)
+    set +e
+    "${SEMANTIC_RELEASE}" "${SR_ARGS[@]}" 2>&1 | tee "${SR_LOG}"
+    SR_STATUS=${PIPESTATUS[0]}
+    set -e
+
+    if [ "${SR_STATUS}" -ne 0 ]; then
+      rm -f "${SR_LOG}"
+      exit "${SR_STATUS}"
+    fi
+
+    if is_release_published; then
+      new_release_published="true"
+      rm -f "${SR_LOG}"
+      break
+    fi
+
+    if grep -q "is behind the remote one" "${SR_LOG}"; then
+      echo "::warning::semantic-release reported local branch is behind remote."
+      if [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; then
+        echo "Fetching origin/${TARGET_BRANCH} and waiting 5 seconds before retrying..."
+        sleep 5
+        ATTEMPT=$((ATTEMPT + 1))
+        rm -f "${SR_LOG}"
+        continue
+      fi
+    fi
+
+    rm -f "${SR_LOG}"
+    break
+  done
+
   echo "new_release_published=${new_release_published:-false}" >> "$GITHUB_OUTPUT"
 fi
