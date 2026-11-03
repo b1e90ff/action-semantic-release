@@ -28,7 +28,7 @@ if [ -n "${INPUT_EXTRA_PLUGINS}" ]; then
   done <<< "${INPUT_EXTRA_PLUGINS}"
 fi
 
-SR_LOG=""
+SR_LOG=$(mktemp)
 trap 'rm -f "${SR_LOG:-}"' EXIT
 
 if [ -z "${SEMANTIC_RELEASE:-}" ]; then
@@ -192,7 +192,7 @@ else
       echo "::notice::Retrying semantic-release (attempt ${ATTEMPT} of ${MAX_ATTEMPTS})..."
     fi
 
-    git fetch origin "${TARGET_BRANCH}"
+    git fetch origin -- "${TARGET_BRANCH}"
 
     if git rev-parse --verify "origin/${TARGET_BRANCH}" >/dev/null 2>&1; then
       LOCAL_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
@@ -206,7 +206,6 @@ else
       fi
     fi
 
-    SR_LOG=$(mktemp)
     set +e
     "${SEMANTIC_RELEASE}" ${SR_ARGS[@]+"${SR_ARGS[@]}"} 2>&1 | tee "${SR_LOG}"
     SR_STATUS=${PIPESTATUS[0]}
@@ -225,13 +224,9 @@ else
       echo "::warning::semantic-release reported local branch is behind remote."
       if [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; then
         echo "Resetting local branch state to origin/${TARGET_BRANCH}..."
-        git reset --hard "origin/${TARGET_BRANCH}" 2>/dev/null || true
-        git clean -fd 2>/dev/null || true
-        git tag -l | while IFS= read -r tag; do
-          if [ -n "${tag}" ] && ! git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            git tag -d "${tag}" >/dev/null 2>&1 || true
-          fi
-        done
+        git reset --hard "origin/${TARGET_BRANCH}"
+        git clean -fd -e .npmrc
+        git fetch --prune origin "+refs/tags/*:refs/tags/*" 2>/dev/null || true
         echo "Fetching origin/${TARGET_BRANCH} and waiting $((5 * ATTEMPT)) seconds before retrying..."
         sleep $((5 * ATTEMPT))
         ATTEMPT=$((ATTEMPT + 1))

@@ -27,6 +27,9 @@ test_retry_when_behind_remote() {
   local tdir="${TEMP_ROOT}/test1"
   setup_repo "${tdir}"
 
+  # Place untracked .npmrc to verify it survives git clean on retry
+  echo "//npm.pkg.github.com/:_authToken=dummy-token" > "${tdir}/local/.npmrc"
+
   mkdir -p "${tdir}/other"
   git clone "${tdir}/remote" "${tdir}/other" >/dev/null 2>&1
   git -C "${tdir}/other" config user.name "other"
@@ -79,6 +82,21 @@ EOF
 
   if ! grep -q "^new_release_published=true$" "${GITHUB_OUTPUT}"; then
     echo "FAIL: Expected new_release_published=true in GITHUB_OUTPUT" >&2
+    exit 1
+  fi
+
+  if [ ! -f "${tdir}/local/.npmrc" ]; then
+    echo "FAIL: Expected .npmrc to be preserved across retry" >&2
+    exit 1
+  fi
+
+  if [ -f "${tdir}/local/local-unpushed.txt" ]; then
+    echo "FAIL: Expected unpushed file local-unpushed.txt to be removed by reset" >&2
+    exit 1
+  fi
+
+  if git -C "${tdir}/local" rev-parse "v1.1.0" >/dev/null 2>&1; then
+    echo "FAIL: Expected unpushed tag v1.1.0 to be deleted" >&2
     exit 1
   fi
 
