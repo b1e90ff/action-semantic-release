@@ -82,13 +82,23 @@ jobs:
             exit 1
           fi
 
+  test-scripts:
+    name: Test Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run retry test suite
+        run: |
+          chmod +x test/release-retry.test.sh
+          test/release-retry.test.sh
+
   ci:
     name: CI
-    needs: [lint-action, lint-scripts, lint-workflows, lint-js, test-release-notes]
+    needs: [lint-action, lint-scripts, lint-workflows, lint-js, test-release-notes, test-scripts]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for result in "${{ needs.lint-action.result }}" "${{ needs.lint-scripts.result }}" "${{ needs.lint-workflows.result }}" "${{ needs.lint-js.result }}" "${{ needs.test-release-notes.result }}"; do
+          for result in "${{ needs.lint-action.result }}" "${{ needs.lint-scripts.result }}" "${{ needs.lint-workflows.result }}" "${{ needs.lint-js.result }}" "${{ needs.test-release-notes.result }}" "${{ needs.test-scripts.result }}"; do
             [ "$result" = "success" ] || exit 1
           done

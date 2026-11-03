@@ -28,15 +28,20 @@ if [ -n "${INPUT_EXTRA_PLUGINS}" ]; then
   done <<< "${INPUT_EXTRA_PLUGINS}"
 fi
 
-# Own install directory instead of npx: the plugins then resolve their presets next
-# to themselves and never reach for whatever the released project happens to have.
-TOOLS_DIR="${RUNNER_TEMP:-/tmp}/semantic-release-tools"
-mkdir -p "${TOOLS_DIR}"
-npm install --prefix "${TOOLS_DIR}" --no-save --no-audit --no-fund --loglevel error "${PACKAGES[@]}"
+SR_LOG=""
+trap 'rm -f "${SR_LOG:-}"' EXIT
 
-node "${SCRIPT_DIR}/verify-preset.mjs" "${TOOLS_DIR}"
+if [ -z "${SEMANTIC_RELEASE:-}" ]; then
+  # Own install directory instead of npx: the plugins then resolve their presets next
+  # to themselves and never reach for whatever the released project happens to have.
+  TOOLS_DIR="${RUNNER_TEMP:-/tmp}/semantic-release-tools"
+  mkdir -p "${TOOLS_DIR}"
+  npm install --prefix "${TOOLS_DIR}" --no-save --no-audit --no-fund --loglevel error "${PACKAGES[@]}"
 
-SEMANTIC_RELEASE="${TOOLS_DIR}/node_modules/.bin/semantic-release"
+  node "${SCRIPT_DIR}/verify-preset.mjs" "${TOOLS_DIR}"
+
+  SEMANTIC_RELEASE="${TOOLS_DIR}/node_modules/.bin/semantic-release"
+fi
 
 # npx populated npm_package_* from the package.json in CWD; calling the binary
 # directly does not, and release configs interpolate those variables.
@@ -187,52 +192,53 @@ else
       echo "::notice::Retrying semantic-release (attempt ${ATTEMPT} of ${MAX_ATTEMPTS})..."
     fi
 
-    git fetch origin "${TARGET_BRANCH}" 2>/dev/null || true
+    git fetch origin "${TARGET_BRANCH}"
 
     if git rev-parse --verify "origin/${TARGET_BRANCH}" >/dev/null 2>&1; then
       LOCAL_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
       REMOTE_SHA=$(git rev-parse "origin/${TARGET_BRANCH}" 2>/dev/null || echo "")
       if [ -n "${LOCAL_SHA}" ] && [ -n "${REMOTE_SHA}" ] && [ "${LOCAL_SHA}" != "${REMOTE_SHA}" ]; then
         echo "Local HEAD differs from origin/${TARGET_BRANCH}. Synchronizing..."
-        if ! git merge --ff-only "origin/${TARGET_BRANCH}" 2>/dev/null; then
-          if ! git merge --no-edit "origin/${TARGET_BRANCH}" 2>/dev/null; then
-            echo "::error::Merge conflict detected when syncing with origin/${TARGET_BRANCH}." >&2
-            git merge --abort 2>/dev/null || true
-            exit 1
-          fi
+        if ! git merge --ff-only "origin/${TARGET_BRANCH}"; then
+          echo "::error::Cannot fast-forward to origin/${TARGET_BRANCH}. Branch has diverged or merge conflict detected." >&2
+          exit 1
         fi
       fi
     fi
 
     SR_LOG=$(mktemp)
     set +e
-    "${SEMANTIC_RELEASE}" "${SR_ARGS[@]}" 2>&1 | tee "${SR_LOG}"
+    "${SEMANTIC_RELEASE}" ${SR_ARGS[@]+"${SR_ARGS[@]}"} 2>&1 | tee "${SR_LOG}"
     SR_STATUS=${PIPESTATUS[0]}
     set -e
 
     if [ "${SR_STATUS}" -ne 0 ]; then
-      rm -f "${SR_LOG}"
       exit "${SR_STATUS}"
     fi
 
     if is_release_published; then
       new_release_published="true"
-      rm -f "${SR_LOG}"
       break
     fi
 
     if grep -q "is behind the remote one" "${SR_LOG}"; then
       echo "::warning::semantic-release reported local branch is behind remote."
       if [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; then
-        echo "Fetching origin/${TARGET_BRANCH} and waiting 5 seconds before retrying..."
-        sleep 5
+        echo "Resetting local branch state to origin/${TARGET_BRANCH}..."
+        git reset --hard "origin/${TARGET_BRANCH}" 2>/dev/null || true
+        git clean -fd 2>/dev/null || true
+        git tag -l | while IFS= read -r tag; do
+          if [ -n "${tag}" ] && ! git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            git tag -d "${tag}" >/dev/null 2>&1 || true
+          fi
+        done
+        echo "Fetching origin/${TARGET_BRANCH} and waiting $((5 * ATTEMPT)) seconds before retrying..."
+        sleep $((5 * ATTEMPT))
         ATTEMPT=$((ATTEMPT + 1))
-        rm -f "${SR_LOG}"
         continue
       fi
     fi
 
-    rm -f "${SR_LOG}"
     break
   done
 

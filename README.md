@@ -87,6 +87,7 @@ jobs:
 | `module-pattern` | no | `*` | Glob of directories to search for modules, e.g. `charts/*` |
 | `module-markers` | no | `package.json,Chart.yaml` | File names that mark a directory as a module; globs allowed |
 | `generate-package-json` | no | `true` | Write a `package.json` from `Chart.yaml` for the release; off requires a committed one |
+| `retry-on-remote-ahead` | no | `true` | Retry up to 2 times if remote branch advanced during release |
 
 ## Outputs
 
