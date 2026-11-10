@@ -187,6 +187,23 @@ else
     [ -n "${GITHUB_ENV:-}" ] && [ -f "${GITHUB_ENV}" ] && grep -q "^new_release_published=true$" "${GITHUB_ENV}"
   }
 
+  ACTION_DIR="${SCRIPT_DIR}/.."
+
+  # The retry reset and clean discard local changes, so an uncommitted config would silently vanish.
+  require_committed_release_config() {
+    local changes
+    local pathspecs=(':(glob,icase).releaserc*' ':(glob,icase)release.config.*')
+    if ! git ls-files --error-unmatch -- .releaserc.cjs >/dev/null 2>&1 \
+      && cmp -s .releaserc.cjs "${ACTION_DIR}/.releaserc.cjs"; then
+      pathspecs+=(':(exclude).releaserc.cjs')
+    fi
+    changes=$(git status --porcelain --untracked-files=all -- "${pathspecs[@]}")
+    if [ -n "${changes}" ]; then
+      echo "::error::Release config has uncommitted changes that a retry would discard: ${changes//$'\n'/; }. Commit them, gitignore a generated file, or set retry-on-remote-ahead to false." >&2
+      exit 1
+    fi
+  }
+
   while [ "${ATTEMPT}" -le "${MAX_ATTEMPTS}" ]; do
     if [ "${ATTEMPT}" -gt 1 ]; then
       echo "::notice::Retrying semantic-release (attempt ${ATTEMPT} of ${MAX_ATTEMPTS})..."
@@ -206,6 +223,11 @@ else
       fi
     fi
 
+    if [ "${ATTEMPT}" -gt 1 ]; then
+      # The retry clean removed an untracked default config; resolve it again on the new tip.
+      GITHUB_ACTION_PATH="${ACTION_DIR}" "${SCRIPT_DIR}/resolve-config.sh"
+    fi
+
     set +e
     "${SEMANTIC_RELEASE}" ${SR_ARGS[@]+"${SR_ARGS[@]}"} 2>&1 | tee "${SR_LOG}"
     SR_STATUS=${PIPESTATUS[0]}
@@ -223,6 +245,7 @@ else
     if grep -q "is behind the remote one" "${SR_LOG}"; then
       echo "::warning::semantic-release reported local branch is behind remote."
       if [ "${ATTEMPT}" -lt "${MAX_ATTEMPTS}" ]; then
+        require_committed_release_config
         echo "Resetting local branch state to origin/${TARGET_BRANCH}..."
         git reset --hard "origin/${TARGET_BRANCH}"
         git clean -fd -e .npmrc
