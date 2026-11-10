@@ -65,7 +65,7 @@ inputs:
     default: "true"
 
   retry-on-remote-ahead:
-    description: "Retry release execution if local branch is behind remote (up to 2 retries, single-package releases)"
+    description: "Retry release execution if local branch is behind remote (up to 2 retries, single-package releases); fails instead of retrying if any root .releaserc* or release.config.* file (except the action's own default copy) has uncommitted, non-ignored changes"
     required: false
     default: "true"
 
